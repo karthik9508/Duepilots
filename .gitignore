@@ -1,0 +1,17 @@
+# Dependencies
+collection/node_modules/
+node_modules/
+
+# Next.js Build Output
+collection/.next/
+.next/
+collection/out/
+
+# Environments & Local Settings
+.env*.local
+collection/.env*.local
+.claude/
+**/settings.local.json
+
+# Backup/Temp Directories
+new 2/
