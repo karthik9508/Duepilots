@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { toPng, toBlob } from 'html-to-image'
 import { ReminderCardExport } from '@/components/reminder-card-export'
-import { Customer, updateReminderStage, updateCustomerBalances } from '@/app/actions'
+import { Customer, updateReminderStage, updateCustomerBalances, sendEmailReminder } from '@/app/actions'
 import { ReminderStage, generateMessage } from '@/utils/templates'
 import { formatCurrency, useCurrency } from '@/utils/currency'
 import { MessageCircle, Mail, ChevronDown, Download, Loader2, Pencil, Check, X, PlusCircle, DollarSign, Calendar } from 'lucide-react'
@@ -270,13 +270,35 @@ export function CustomerTable({ initialCustomers }: { initialCustomers: Customer
         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank')
       }, 300)
 
+      // Update backend (optimistically update UI first)
+      try {
+        setCustomers(customers.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
+        await updateReminderStage(customer.id, stage)
+      } catch (error) {
+        console.error('Failed to update stage', error)
+        alert('Failed to save the reminder stage.')
+      }
+
     } else if (type === 'email') {
       const email = customer.email || ''
       if (!email) {
         alert('No email address for this customer.')
         return
       }
-      window.open(`mailto:${email}?subject=Payment Reminder&body=${encodeURIComponent(message)}`, '_blank')
+
+      // Optimistically update UI
+      setCustomers(customers.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
+
+      try {
+        const res = await sendEmailReminder(customer.id, stage)
+        if (res.success) {
+          alert(res.message)
+        }
+      } catch (err: any) {
+        console.error('Failed to send email reminder:', err)
+        alert(err.message || 'Failed to send email reminder via Resend.')
+      }
+
     } else if (type === 'png') {
       setIsExporting(true)
       setExportData({
@@ -302,15 +324,15 @@ export function CustomerTable({ initialCustomers }: { initialCustomers: Customer
         }
         setIsExporting(false)
       }, 300)
-    }
 
-    // Update backend (optimistically update UI first)
-    try {
-      setCustomers(customers.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
-      await updateReminderStage(customer.id, stage)
-    } catch (error) {
-      console.error('Failed to update stage', error)
-      alert('Failed to save the reminder stage.')
+      // Update backend (optimistically update UI first)
+      try {
+        setCustomers(customers.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
+        await updateReminderStage(customer.id, stage)
+      } catch (error) {
+        console.error('Failed to update stage', error)
+        alert('Failed to save the reminder stage.')
+      }
     }
   }
 
@@ -793,8 +815,8 @@ export function CustomerTable({ initialCustomers }: { initialCustomers: Customer
                       className="flex flex-col items-center justify-center p-3 rounded-xl border border-blue-100 dark:border-blue-950/20 bg-blue-50/50 hover:bg-blue-50 dark:bg-blue-950/5 dark:hover:bg-blue-950/15 text-blue-700 dark:text-blue-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed group"
                     >
                       <Mail size={20} className="mb-1 text-blue-500 group-hover:scale-110 transition-transform" />
-                      <span className="text-xs font-bold">Email Mailto</span>
-                      <span className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-0.5">Send mail template</span>
+                      <span className="text-xs font-bold">Send Email</span>
+                      <span className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-0.5">Deliver automated email</span>
                     </button>
 
                     {/* PNG Export */}

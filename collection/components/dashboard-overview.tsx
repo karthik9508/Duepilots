@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { toPng, toBlob } from 'html-to-image'
 import { ReminderCardExport } from '@/components/reminder-card-export'
-import { Customer, updateReminderStage, updateCustomerBalances } from '@/app/actions'
+import { Customer, updateReminderStage, updateCustomerBalances, sendEmailReminder } from '@/app/actions'
 import { ReminderStage, generateMessage } from '@/utils/templates'
 import { formatCurrency, useCurrency } from '@/utils/currency'
 import { 
@@ -259,13 +259,33 @@ export function DashboardOverview({ initialCustomers }: DashboardOverviewProps) 
         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank')
       }, 300)
 
+      try {
+        setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
+        await updateReminderStage(customer.id, stage)
+      } catch (error) {
+        console.error('Failed to update stage in DB', error)
+      }
+
     } else if (type === 'email') {
       const email = customer.email || ''
       if (!email) {
         alert('No email address for this customer.')
         return
       }
-      window.open(`mailto:${email}?subject=Payment Reminder&body=${encodeURIComponent(message)}`, '_blank')
+
+      // Optimistically update UI
+      setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
+
+      try {
+        const res = await sendEmailReminder(customer.id, stage)
+        if (res.success) {
+          alert(res.message)
+        }
+      } catch (err: any) {
+        console.error('Failed to send email reminder:', err)
+        alert(err.message || 'Failed to send email reminder via Resend.')
+      }
+
     } else if (type === 'png') {
       setIsExporting(true)
       setExportData({
@@ -290,13 +310,13 @@ export function DashboardOverview({ initialCustomers }: DashboardOverviewProps) 
         }
         setIsExporting(false)
       }, 300)
-    }
 
-    try {
-      setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
-      await updateReminderStage(customer.id, stage)
-    } catch (error) {
-      console.error('Failed to update stage in DB', error)
+      try {
+        setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, reminder_stage: stage } : c))
+        await updateReminderStage(customer.id, stage)
+      } catch (error) {
+        console.error('Failed to update stage in DB', error)
+      }
     }
   }
 
